@@ -22,7 +22,6 @@ func main() {
 		fmt.Println("Cannot connect to client")
 		os.Exit(1)
 	}
-
 	buf := make([]byte, 1024)
 	for {
 		_, err := conn.Read(buf)
