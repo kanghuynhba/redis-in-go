@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"strconv"
 )
 
@@ -12,8 +11,9 @@ type RESPDecoder struct {
 	pos int
 }
 
-func NewRESPDecoder(buf []byte) *RESPDecoder {
-	return &RESPDecoder{buf: buf, pos: 0}
+func RESPParser(buf []byte) ([]string, error) {
+	parser := &RESPDecoder{buf: buf, pos: 0}
+	return parser.Decode()
 }
 
 func (p *RESPDecoder) readDecimal() (int, error) {
@@ -25,8 +25,8 @@ func (p *RESPDecoder) readDecimal() (int, error) {
 
 	numBytes := p.buf[p.pos : p.pos+idx]
 
-	// skip "\r\n"
-	p.pos += 2
+	// skip the digits and "\r\n"
+	p.pos += (idx + 2)
 
 	return strconv.Atoi(string(numBytes))
 }
@@ -46,7 +46,7 @@ func (p *RESPDecoder) parseBulkHeader(delim byte) (int, error) {
 	return p.readDecimal()
 }
 
-func (p *RESPDecoder) decode() ([]string, error) {
+func (p *RESPDecoder) Decode() ([]string, error) {
 	if len(p.buf[p.pos:]) == 0 {
 		return nil, errors.New("empty buffer")
 	}
@@ -57,11 +57,17 @@ func (p *RESPDecoder) decode() ([]string, error) {
 		return nil, err
 	}
 
-	str := string(p.buf)
+	args := make([]string, count)
+	for i := 0; i < count; i++ {
+		length, err := p.parseBulkHeader(byte('$'))
 
-	fmt.Print(str)
+		if err != nil {
+			return nil, err
+		}
 
-	fmt.Print(count)
+		args[i] = string(p.buf[p.pos : p.pos+length])
+		p.pos += (length + 2)
+	}
 
-	return nil, nil
+	return args, nil
 }

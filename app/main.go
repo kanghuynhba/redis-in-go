@@ -3,12 +3,14 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 )
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
+	register := BuildRegistry()
 
 	for {
 		n, err := conn.Read(buf)
@@ -17,10 +19,21 @@ func handleConnection(conn net.Conn) {
 			break
 		}
 
-		p := NewRESPDecoder(buf[:n])
+		parse_result, err := RESPParser(buf[:n])
 
-		p.decode()
+		command := strings.ToUpper(parse_result[0])
+		args := parse_result[1:]
 
+		handler, exists := register[command]
+
+		if !exists {
+			conn.Write([]byte(fmt.Sprintf("-ERR unknown command '%s'\r\n", command)))
+			continue
+		}
+
+		response := handler(args)
+
+		conn.Write(response)
 	}
 }
 
