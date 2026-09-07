@@ -6,11 +6,10 @@ import (
 	"strings"
 )
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, register map[string]Handler) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
-	register := BuildRegistry()
 
 	for {
 		n, err := conn.Read(buf)
@@ -27,7 +26,7 @@ func handleConnection(conn net.Conn) {
 		handler, exists := register[command]
 
 		if !exists {
-			conn.Write([]byte(fmt.Sprintf("-ERR unknown command '%s'\r\n", command)))
+			conn.Write(EncodeError(ErrUnknownCommand(command)))
 			continue
 		}
 
@@ -49,6 +48,9 @@ func main() {
 
 	defer l.Close()
 
+	store := NewStore()
+	register := BuildRegistry(store)
+
 	for {
 
 		conn, err := l.Accept()
@@ -59,6 +61,6 @@ func main() {
 		}
 
 		// Handle each connection concurrently in a separate goroutine
-		go handleConnection(conn)
+		go handleConnection(conn, register)
 	}
 }
