@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
+
+var ErrWrongType = errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
 
 type Store struct {
 	mu sync.RWMutex
@@ -35,21 +38,25 @@ func (s *Store) SetWithExpiry(key, value string, ttl time.Duration) {
 	s.db[key] = Object{TypeString, value, &expiry}
 }
 
-func (s *Store) Get(key string) (string, bool) {
+func (s *Store) Get(key string) (string, bool, error) {
 	s.mu.RLock()
-	value, exists := s.db[key]
+	obj, exists := s.db[key]
 	s.mu.RUnlock()
 
 	if !exists {
-		return "", false
+		return "", false, nil
 	}
 
-	if value.ExpiredAt != nil && time.Now().After(*value.ExpiredAt) {
+	if obj.ExpiredAt != nil && time.Now().After(*obj.ExpiredAt) {
 		s.delete(key)
-		return "", false
+		return "", false, nil
 	}
 
-	return value.Data.(string), true
+	if err := checkType(obj.Type, TypeString); err != nil {
+		return "", false, err
+	}
+
+	return obj.Data.(string), true, nil
 }
 
 func (s *Store) delete(key string) {
@@ -83,10 +90,70 @@ func (s *Store) sweepExpiredKeys() {
 	}
 }
 
-func checkType(objType, expectedType ObjectType) bool {
+func checkType(objType, expectedType ObjectType) error {
 	if objType != expectedType {
-		// return errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
-		return true
+		return ErrWrongType
 	}
-	return false
+	return nil
+}
+
+func (s *Store) RPush(key string, values ...string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	obj, exist := s.db[key]
+
+	list := []string{}
+
+	if !exist || (obj.ExpiredAt != nil && time.Now().After(*obj.ExpiredAt)) {
+		newList := append([]string{}, values...)
+		s.db[key] = Object{
+			Type: TypeList, Data: newList,
+		}
+		return len(newList), nil
+	}
+
+	if err := checkType(obj.Type, TypeList); err != nil {
+		return 0, err
+	}
+
+	list = obj.Data.([]string)
+	list = append(list, values...)
+
+	obj.Data = list
+	s.db[key] = obj
+
+	return len(list), nil
+}
+
+func (s *Store) LRange(key string, lBound, rBound int) ([]string, error) {
+	s.mu.RLock()
+	obj, exist := s.db[key]
+	s.mu.RUnlock()
+
+	if !exist || (obj.ExpiredAt != nil && time.Now().After(*obj.ExpiredAt)) {
+		s.delete(key)
+		return nil, nil
+	}
+
+	if err := checkType(obj.Type, TypeList); err != nil {
+		return nil, err
+	}
+
+	list_len := len(obj.Data.([]string))
+
+	lBound = max(lBound, -list_len)
+	rBound = min(rBound, list_len-1)
+
+	if lBound < 0 {
+		lBound += list_len
+	}
+
+	if rBound < 0 {
+		rBound += list_len
+	}
+
+	values := obj.Data.([]string)
+
+	return values[lBound : rBound+1], nil
 }

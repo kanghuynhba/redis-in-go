@@ -67,13 +67,51 @@ func handleGet(args []string, s *Store) []byte {
 
 	key := args[0]
 
-	value, exists := s.Get(key)
+	value, exists, err := s.Get(key)
+
+	if err != nil {
+		return EncodeError(err)
+	}
 
 	if !exists {
 		return EncodeNullBulkString()
 	}
-
 	return EncodeBulkString(value)
+}
+
+func handleRPush(args []string, s *Store) []byte {
+	if len(args) < 2 {
+		return EncodeError(ErrWrongArgs("RPUSH"))
+	}
+
+	key := args[0]
+
+	idx, err := s.RPush(key, args[1:]...)
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	return EncodeInteger(idx)
+}
+
+func handleLRange(args []string, s *Store) []byte {
+	if len(args) != 3 {
+		return EncodeError(ErrWrongArgs("LRANGE"))
+	}
+
+	key := args[0]
+
+	lBound, _ := strconv.Atoi(args[1])
+	rBound, _ := strconv.Atoi(args[2])
+
+	values, err := s.LRange(key, lBound, rBound)
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	return EncodeStringArray(values)
 }
 
 func BuildRegistry(s *Store) map[string]Handler {
@@ -85,6 +123,12 @@ func BuildRegistry(s *Store) map[string]Handler {
 		},
 		"GET": func(args []string) []byte {
 			return handleGet(args, s)
+		},
+		"RPUSH": func(args []string) []byte {
+			return handleRPush(args, s)
+		},
+		"LRANGE": func(args []string) []byte {
+			return handleLRange(args, s)
 		},
 	}
 }

@@ -27,7 +27,7 @@ func TestConcurrentSetGet(t *testing.T) {
 				store.Set(key, val)
 
 				// Concurrent GET
-				got, exists := store.Get(key)
+				got, exists, _ := store.Get(key)
 				if !exists || got != val {
 					t.Errorf("expected %s, got %s (exists=%v)", val, got, exists)
 				}
@@ -90,7 +90,7 @@ func TestConcurrentSetGetWithExpiry(t *testing.T) {
 			store.SetWithExpiry(key, val, 50*time.Millisecond)
 
 			// Immediate GET should succeed
-			if got, ok := store.Get(key); !ok || got != val {
+			if got, ok, _ := store.Get(key); !ok || got != val {
 				t.Errorf("immediate get failed for %s: got %s, ok=%v", key, got, ok)
 			}
 
@@ -98,7 +98,7 @@ func TestConcurrentSetGetWithExpiry(t *testing.T) {
 			time.Sleep(70 * time.Millisecond)
 
 			// GET after expiration should return false
-			if _, ok := store.Get(key); ok {
+			if _, ok, _ := store.Get(key); ok {
 				t.Errorf("expected key %s to be expired, but it was found", key)
 			}
 		}(i)

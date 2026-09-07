@@ -19,157 +19,157 @@ if [ ! -f "$TESTER_BIN" ]; then
     (cd /Users/khang/Work/projects/redis-tester && go build -o dist/main.out ./cmd/tester)
 fi
 
-# All test cases defined in redis-tester
+# All test cases matching CodeCrafters official stage order (1-124)
 ALL_STAGES=(
-    # --- Base Stages (1-7) ---
-    "1|jm1|Base: Bind to a port|base"
-    "2|rg2|Base: Respond to PING|base"
-    "3|wy1|Base: Respond to multiple PINGs|base"
-    "4|zu2|Base: Handle concurrent clients|base"
-    "5|qq0|Base: Implement the ECHO command|base"
-    "6|la7|Base: Implement the SET & GET commands|base"
-    "7|yz1|Base: Key Expiry (PX)|base"
+    # --- 1. Base Stages (1-7) ---
+    "1|jm1|Bind to a port|base"
+    "2|rg2|Respond to PING|base"
+    "3|wy1|Respond to multiple PINGs|base"
+    "4|zu2|Handle concurrent clients|base"
+    "5|qq0|Implement the ECHO command|base"
+    "6|la7|Implement the SET & GET commands|base"
+    "7|yz1|Expiry|base"
 
-    # --- RDB Persistence (8-13) ---
-    "8|zg5|RDB: Read RDB config|rdb"
-    "9|jz6|RDB: Read key from RDB file|rdb"
-    "10|gc6|RDB: Read string value from RDB file|rdb"
-    "11|jw4|RDB: Read multiple keys from RDB file|rdb"
-    "12|dq3|RDB: Read multiple string values from RDB file|rdb"
-    "13|sm4|RDB: Read value with expiry from RDB file|rdb"
+    # --- 2. Lists (8-18) ---
+    "8|mh6|Create a list|lists"
+    "9|tn7|Append an element|lists"
+    "10|lx4|Append multiple elements|lists"
+    "11|sf6|List elements (positive indexes)|lists"
+    "12|ri1|List elements (negative indexes)|lists"
+    "13|gu5|Prepend elements|lists"
+    "14|fv6|Query list length|lists"
+    "15|ef1|Remove an element|lists"
+    "16|jp1|Remove multiple elements|lists"
+    "17|ec3|Blocking retrieval|lists"
+    "18|xj7|Blocking retrieval with timeout|lists"
 
-    # --- AOF Persistence (14-23) ---
-    "14|uj3|AOF: Config defaults|aof"
-    "15|vd9|AOF: Config from flags|aof"
-    "16|fm0|AOF: Create AOF directory|aof"
-    "17|dw4|AOF: Create append-only file|aof"
-    "18|pb9|AOF: Create AOF manifest file|aof"
-    "19|dc8|AOF: Write single command|aof"
-    "20|fi1|AOF: Write multiple commands|aof"
-    "21|ep6|AOF: Filter commands before write|aof"
-    "22|xz2|AOF: Replay single command|aof"
-    "23|kn2|AOF: Replay multiple commands|aof"
+    # --- 3. Streams (19-31) ---
+    "19|cc3|The TYPE command|streams"
+    "20|cf6|Create a stream|streams"
+    "21|hq8|Validating entry IDs|streams"
+    "22|yh3|Partially auto-generated IDs|streams"
+    "23|xu6|Fully auto-generated IDs|streams"
+    "24|zx1|Query entries from stream|streams"
+    "25|yp1|Query with -|streams"
+    "26|fs1|Query with +|streams"
+    "27|um0|Query single stream using XREAD|streams"
+    "28|ru9|Query multiple streams using XREAD|streams"
+    "29|bs1|Blocking reads|streams"
+    "30|hw1|Blocking reads without timeout|streams"
+    "31|xu1|Blocking reads using $|streams"
 
-    # --- Replication (24-41) ---
-    "24|bw1|Replication: Bind to custom port|repl"
-    "25|ye5|Replication: INFO replication (role:master)|repl"
-    "26|hc6|Replication: INFO replication (role:replica)|repl"
-    "27|xc1|Replication: Replication ID & offset|repl"
-    "28|gl7|Replication: Replica sends PING|repl"
-    "29|eh4|Replication: Replica sends REPLCONF|repl"
-    "30|ju6|Replication: Replica sends PSYNC|repl"
-    "31|fj0|Replication: Master handles REPLCONF|repl"
-    "32|vm3|Replication: Master handles PSYNC|repl"
-    "33|cf8|Replication: Master handles PSYNC (RDB transfer)|repl"
-    "34|zn8|Replication: Master command propagation|repl"
-    "35|hd5|Replication: Multiple replicas|repl"
-    "36|yg4|Replication: Command processing on replica|repl"
-    "37|xv6|Replication: GETACK with offset 0|repl"
-    "38|yd3|Replication: GETACK with non-zero offset|repl"
-    "39|my8|Replication: WAIT with 0 replicas|repl"
-    "40|tu8|Replication: WAIT with 0 offset|repl"
-    "41|na2|Replication: WAIT command|repl"
+    # --- 4. Transactions (32-42) ---
+    "32|si4|The INCR command (1/3)|tx"
+    "33|lz8|The INCR command (2/3)|tx"
+    "34|mk1|The INCR command (3/3)|tx"
+    "35|pn0|The MULTI command|tx"
+    "36|lo4|The EXEC command|tx"
+    "37|we1|Empty transaction|tx"
+    "38|rs9|Queueing commands|tx"
+    "39|fy6|Executing a transaction|tx"
+    "40|rl9|The DISCARD command|tx"
+    "41|sg9|Failures within transactions|tx"
+    "42|jf8|Multiple transactions|tx"
 
-    # --- Streams (42-54) ---
-    "42|cc3|Streams: TYPE command (stream)|streams"
-    "43|cf6|Streams: XADD command|streams"
-    "44|hq8|Streams: Validate stream ID|streams"
-    "45|yh3|Streams: Partially auto-generated ID|streams"
-    "46|xu6|Streams: Fully auto-generated ID|streams"
-    "47|zx1|Streams: XRANGE command|streams"
-    "48|yp1|Streams: XRANGE minimum ID|streams"
-    "49|fs1|Streams: XRANGE maximum ID|streams"
-    "50|um0|Streams: XREAD command|streams"
-    "51|ru9|Streams: XREAD multiple streams|streams"
-    "52|bs1|Streams: XREAD with BLOCK|streams"
-    "53|hw1|Streams: XREAD with BLOCK (no timeout)|streams"
-    "54|xu1|Streams: XREAD with BLOCK (maximum ID)|streams"
+    # --- 5. Optimistic Locking (43-50) ---
+    "43|jb7|The WATCH command|watch"
+    "44|jq9|WATCH inside transaction|watch"
+    "45|mh8|Tracking key modifications|watch"
+    "46|fp0|Watching multiple keys|watch"
+    "47|uo9|Watching missing keys|watch"
+    "48|bn1|The UNWATCH command|watch"
+    "49|fn4|Unwatch on EXEC|watch"
+    "50|hq1|Unwatch on DISCARD|watch"
 
-    # --- Transactions (55-65) ---
-    "55|si4|Transactions: INCR command (basic)|tx"
-    "56|lz8|Transactions: INCR command (missing key)|tx"
-    "57|mk1|Transactions: INCR command (non-integer)|tx"
-    "58|pn0|Transactions: MULTI command|tx"
-    "59|lo4|Transactions: EXEC command|tx"
-    "60|we1|Transactions: EXEC without MULTI|tx"
-    "61|rs9|Transactions: Queue commands in transaction|tx"
-    "62|fy6|Transactions: Execute queued commands|tx"
-    "63|rl9|Transactions: DISCARD command|tx"
-    "64|sg9|Transactions: Errors inside transactions|tx"
-    "65|jf8|Transactions: Concurrent transactions|tx"
+    # --- 6. Replication (51-68) ---
+    "51|bw1|Configure listening port|repl"
+    "52|ye5|The INFO command|repl"
+    "53|hc6|The INFO command on a replica|repl"
+    "54|xc1|Initial replication ID and offset|repl"
+    "55|gl7|Send handshake (1/3)|repl"
+    "56|eh4|Send handshake (2/3)|repl"
+    "57|ju6|Send handshake (3/3)|repl"
+    "58|fj0|Receive handshake (1/2)|repl"
+    "59|vm3|Receive handshake (2/2)|repl"
+    "60|cf8|Empty RDB transfer|repl"
+    "61|zn8|Single-replica propagation|repl"
+    "62|hd5|Multi-replica propagation|repl"
+    "63|yg4|Command processing|repl"
+    "64|xv6|ACKs with no commands|repl"
+    "65|yd3|ACKs with commands|repl"
+    "66|my8|WAIT with no replicas|repl"
+    "67|tu8|WAIT with no commands|repl"
+    "68|na2|WAIT with multiple commands|repl"
 
-    # --- Optimistic Locking (66-73) ---
-    "66|jb7|Locking: WATCH command|watch"
-    "67|jq9|Locking: WATCH inside transaction|watch"
-    "68|mh8|Locking: Key modification aborts transaction|watch"
-    "69|fp0|Locking: WATCH multiple keys|watch"
-    "70|uo9|Locking: WATCH missing key|watch"
-    "71|bn1|Locking: UNWATCH command|watch"
-    "72|fn4|Locking: UNWATCH on EXEC|watch"
-    "73|hq1|Locking: UNWATCH on DISCARD|watch"
+    # --- 7. RDB Persistence (69-74) ---
+    "69|zg5|RDB file config|rdb"
+    "70|jz6|Read a key|rdb"
+    "71|gc6|Read a string value|rdb"
+    "72|jw4|Read multiple keys|rdb"
+    "73|dq3|Read multiple string values|rdb"
+    "74|sm4|Read value with expiry|rdb"
 
-    # --- Lists (74-84) ---
-    "74|mh6|Lists: RPUSH (single element)|lists"
-    "75|tn7|Lists: RPUSH (multiple elements)|lists"
-    "76|lx4|Lists: RPUSH (existing list)|lists"
-    "77|sf6|Lists: LRANGE (positive indexes)|lists"
-    "78|ri1|Lists: LRANGE (negative indexes)|lists"
-    "79|gu5|Lists: LPUSH command|lists"
-    "80|fv6|Lists: LLEN command|lists"
-    "81|ef1|Lists: LPOP (single element)|lists"
-    "82|jp1|Lists: LPOP (multiple elements)|lists"
-    "83|ec3|Lists: BLPOP without timeout|lists"
-    "84|xj7|Lists: BLPOP with timeout|lists"
+    # --- 8. AOF Persistence (75-84) ---
+    "75|uj3|Default AOF options|aof"
+    "76|vd9|AOF options from flags|aof"
+    "77|fm0|Create append-only directory|aof"
+    "78|dw4|Create append-only file|aof"
+    "79|pb9|Create manifest file|aof"
+    "80|dc8|Write a single command|aof"
+    "81|fi1|Write multiple commands|aof"
+    "82|ep6|Filter write commands|aof"
+    "83|xz2|Replay a single command|aof"
+    "84|kn2|Replay multiple commands|aof"
 
-    # --- Pub/Sub (85-91) ---
-    "85|mx3|PubSub: SUBSCRIBE command|pubsub"
-    "86|zc8|PubSub: SUBSCRIBE multiple channels|pubsub"
-    "87|aw8|PubSub: SUBSCRIBE to existing channel|pubsub"
-    "88|lf1|PubSub: Multiple SUBSCRIBE commands|pubsub"
-    "89|hf2|PubSub: PUBLISH to single subscriber|pubsub"
-    "90|dn4|PubSub: PUBLISH to multiple subscribers|pubsub"
-    "91|ze9|PubSub: UNSUBSCRIBE command|pubsub"
+    # --- 9. Pub/Sub (85-91) ---
+    "85|mx3|Subscribe to a channel|pubsub"
+    "86|zc8|Subscribe to multiple channels|pubsub"
+    "87|aw8|Enter subscribed mode|pubsub"
+    "88|lf1|PING in subscribed mode|pubsub"
+    "89|hf2|Publish a message|pubsub"
+    "90|dn4|Deliver messages|pubsub"
+    "91|ze9|Unsubscribe|pubsub"
 
-    # --- Sorted Sets (92-99) ---
-    "92|ct1|ZSet: ZADD (single member)|zset"
-    "93|hf1|ZSet: ZADD (multiple members)|zset"
-    "94|lg6|ZSet: ZRANK command|zset"
-    "95|ic1|ZSet: ZRANGE (positive indexes)|zset"
-    "96|bj4|ZSet: ZRANGE (negative indexes)|zset"
-    "97|kn4|ZSet: ZCARD command|zset"
-    "98|gd7|ZSet: ZSCORE command|zset"
-    "99|sq7|ZSet: ZREM command|zset"
+    # --- 10. Sorted Sets (92-99) ---
+    "92|ct1|Create a sorted set|zset"
+    "93|hf1|Add members|zset"
+    "94|lg6|Retrieve member rank|zset"
+    "95|ic1|List sorted set members|zset"
+    "96|bj4|ZRANGE with negative indexes|zset"
+    "97|kn4|Count sorted set members|zset"
+    "98|gd7|Retrieve member score|zset"
+    "99|sq7|Remove a member|zset"
 
-    # --- Bitmaps (100-108) ---
-    "100|bq9|Bitmaps: SETBIT (single bit)|bitmaps"
-    "101|qj1|Bitmaps: GETBIT (single bit)|bitmaps"
-    "102|yj2|Bitmaps: Read string as bits|bitmaps"
-    "103|pk5|Bitmaps: Read bits as string|bitmaps"
-    "104|yf6|Bitmaps: SETBIT growing bitmap|bitmaps"
-    "105|nx3|Bitmaps: BITCOUNT command|bitmaps"
-    "106|hv4|Bitmaps: BITOP AND|bitmaps"
-    "107|dk2|Bitmaps: BITOP AND (diff lengths)|bitmaps"
-    "108|fr8|Bitmaps: BITOP OR|bitmaps"
+    # --- 11. Bitmaps (100-108) ---
+    "100|bq9|Create a bitmap|bitmaps"
+    "101|qj1|Retrieve a bit|bitmaps"
+    "102|yj2|Read a string as bits|bitmaps"
+    "103|pk5|Read bits as a string|bitmaps"
+    "104|yf6|Grow a bitmap|bitmaps"
+    "105|nx3|Count set bits|bitmaps"
+    "106|hv4|AND two bitmaps|bitmaps"
+    "107|dk2|AND bitmaps of different lengths|bitmaps"
+    "108|fr8|OR two bitmaps|bitmaps"
 
-    # --- Geospatial (109-116) ---
-    "109|zt4|Geo: GEOADD command|geo"
-    "110|ck3|Geo: GEOADD (validate coordinates)|geo"
-    "111|tn5|Geo: GEOADD (store location)|geo"
-    "112|cr3|Geo: GEOADD (calculate score)|geo"
-    "113|xg4|Geo: GEOPOS command|geo"
-    "114|hb5|Geo: GEOPOS (decode coordinates)|geo"
-    "115|ek6|Geo: GEODIST command|geo"
-    "116|rm9|Geo: GEOSEARCH command|geo"
+    # --- 12. Geospatial Commands (109-116) ---
+    "109|zt4|Respond to GEOADD|geo"
+    "110|ck3|Validate coordinates|geo"
+    "111|tn5|Store a location|geo"
+    "112|cr3|Calculate location score|geo"
+    "113|xg4|Respond to GEOPOS|geo"
+    "114|hb5|Decode coordinates|geo"
+    "115|ek6|Calculate distance|geo"
+    "116|rm9|Search within radius|geo"
 
-    # --- Auth & ACL (117-124) ---
-    "117|jn4|ACL: WHOAMI command|acl"
-    "118|gx8|ACL: GETUSER command|acl"
-    "119|ql6|ACL: GETUSER (nopass flag)|acl"
-    "120|pl7|ACL: GETUSER (passwords)|acl"
-    "121|uv9|ACL: SETUSER (passwords)|acl"
-    "122|hz3|ACL: AUTH command response|acl"
-    "123|nm2|ACL: Default user authentication|acl"
-    "124|ws7|ACL: AUTH command authentication|acl"
+    # --- 13. Authentication (117-124) ---
+    "117|jn4|Respond to ACL WHOAMI|acl"
+    "118|gx8|Respond to ACL GETUSER|acl"
+    "119|ql6|The nopass flag|acl"
+    "120|pl7|The passwords property|acl"
+    "121|uv9|Setting default user password|acl"
+    "122|hz3|The AUTH command|acl"
+    "123|nm2|Enforce authentication|acl"
+    "124|ws7|Authenticate using AUTH|acl"
 )
 
 run_single_stage() {
@@ -236,44 +236,44 @@ case "$TARGET" in
     base)
         run_group "base" "Base Stages (1-7)"
         ;;
-    rdb)
-        run_group "rdb" "RDB Persistence"
-        ;;
-    aof)
-        run_group "aof" "AOF Persistence"
-        ;;
-    repl|replication)
-        run_group "repl" "Replication"
+    lists|list)
+        run_group "lists" "Lists (8-18)"
         ;;
     streams|stream)
-        run_group "streams" "Streams"
+        run_group "streams" "Streams (19-31)"
         ;;
     tx|transactions)
-        run_group "tx" "Transactions"
+        run_group "tx" "Transactions (32-42)"
         ;;
     watch|locking)
-        run_group "watch" "Optimistic Locking"
+        run_group "watch" "Optimistic Locking (43-50)"
         ;;
-    lists|list)
-        run_group "lists" "Lists"
+    repl|replication)
+        run_group "repl" "Replication (51-68)"
+        ;;
+    rdb)
+        run_group "rdb" "RDB Persistence (69-74)"
+        ;;
+    aof)
+        run_group "aof" "AOF Persistence (75-84)"
         ;;
     pubsub)
-        run_group "pubsub" "Pub/Sub"
+        run_group "pubsub" "Pub/Sub (85-91)"
         ;;
     zset|sorted_sets)
-        run_group "zset" "Sorted Sets"
+        run_group "zset" "Sorted Sets (92-99)"
         ;;
     bitmaps|bit)
-        run_group "bitmaps" "Bitmaps"
+        run_group "bitmaps" "Bitmaps (100-108)"
         ;;
     geo|geospatial)
-        run_group "geo" "Geospatial"
+        run_group "geo" "Geospatial (109-116)"
         ;;
     acl|auth)
-        run_group "acl" "Auth & ACL"
+        run_group "acl" "Authentication (117-124)"
         ;;
     list-all|stages)
-        echo -e "${BOLD}Available Stages:${NC}"
+        echo -e "${BOLD}Available Stages (CodeCrafters Official Order 1-124):${NC}"
         for item in "${ALL_STAGES[@]}"; do
             IFS="|" read -r num slug title group <<< "$item"
             printf "  ${YELLOW}%3d${NC} | ${CYAN}%-6s${NC} | ${MAGENTA}%-10s${NC} | %s\n" "$num" "$slug" "[$group]" "$title"
@@ -296,9 +296,9 @@ case "$TARGET" in
             echo -e "${BOLD}Usage:${NC}"
             echo -e "  ./test.sh                 - Run Base stages waterfall (1-7)"
             echo -e "  ./test.sh all             - Run ALL 124 stages across all extensions"
-            echo -e "  ./test.sh <number|slug>   - Run a specific stage (e.g. ./test.sh 1, ./test.sh yz1)"
-            echo -e "  ./test.sh <group>         - Run group (base, rdb, aof, repl, streams, tx, watch, lists, pubsub, zset, bitmaps, geo, acl)"
-            echo -e "  ./test.sh list-all        - List all 124 available stages"
+            echo -e "  ./test.sh <number|slug>   - Run a specific stage (e.g. ./test.sh 8, ./test.sh mh6)"
+            echo -e "  ./test.sh <group>         - Run group (base, lists, streams, tx, watch, repl, rdb, aof, pubsub, zset, bitmaps, geo, acl)"
+            echo -e "  ./test.sh list-all        - List all 124 available stages in official order"
             exit 1
         fi
         ;;
