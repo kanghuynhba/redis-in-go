@@ -9,6 +9,7 @@ type ObjectType string
 const (
 	TypeString ObjectType = "string"
 	TypeList   ObjectType = "list"
+	TypeStream ObjectType = "stream"
 	TypeNone   ObjectType = "none"
 )
 

@@ -11,6 +11,7 @@ import (
 type Handler func(args []string) []byte
 
 var ErrSyntax = errors.New("ERR syntax error")
+var ErrNotInteger = errors.New("ERR value is not an integer or out of range")
 
 func ErrUnknownCommand(cmd string) error {
 	return fmt.Errorf("ERR unknown command '%s'", cmd)
@@ -21,13 +22,15 @@ func ErrWrongArgs(cmd string) error {
 
 }
 
+// base command
+
 func handlePing(args []string) []byte {
 	return EncodeSimpleString("PONG")
 }
 
 func handleEcho(args []string) []byte {
 	if len(args) != 1 {
-		return EncodeError(ErrUnknownCommand("ECHO"))
+		return EncodeError(ErrWrongArgs("ECHO"))
 	}
 	return EncodeBulkString(args[0])
 }
@@ -79,6 +82,8 @@ func handleGet(args []string, s *Store) []byte {
 	return EncodeBulkString(value)
 }
 
+// lists command
+
 func handleRPush(args []string, s *Store) []byte {
 	if len(args) < 2 {
 		return EncodeError(ErrWrongArgs("RPUSH"))
@@ -102,16 +107,79 @@ func handleLRange(args []string, s *Store) []byte {
 
 	key := args[0]
 
-	lBound, _ := strconv.Atoi(args[1])
-	rBound, _ := strconv.Atoi(args[2])
+	start, _ := strconv.Atoi(args[1])
+	stop, _ := strconv.Atoi(args[2])
 
-	values, err := s.LRange(key, lBound, rBound)
+	list_len, _ := s.LLen(key)
+
+	start = max(start, -list_len)
+	stop = min(stop, list_len-1)
+
+	if start < 0 {
+		start += list_len
+	}
+
+	if stop < 0 {
+		stop += list_len
+	}
+
+	values, err := s.LRange(key, start, stop)
 
 	if err != nil {
 		return EncodeError(err)
 	}
 
 	return EncodeStringArray(values)
+}
+
+func handleLLen(args []string, s *Store) []byte {
+	if len(args) != 1 {
+		return EncodeError(ErrWrongArgs("LLEN"))
+	}
+
+	key := args[0]
+
+	len, err := s.LLen(key)
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	return EncodeInteger(len)
+
+}
+
+// streams command
+
+func handleType(args []string, s *Store) []byte {
+	if len(args) != 1 {
+		return EncodeError(ErrWrongArgs("TYPE"))
+	}
+
+	key := args[0]
+
+	keyType := s.Type(key)
+
+	return EncodeSimpleString(keyType)
+
+}
+
+// transactions command
+
+func handleIncr(args []string, s *Store) []byte {
+	if len(args) != 1 {
+		return EncodeError(ErrWrongArgs("INCR"))
+	}
+
+	key := args[0]
+
+	num, err := s.Incr(key)
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	return EncodeInteger(num)
 }
 
 func BuildRegistry(s *Store) map[string]Handler {
@@ -129,6 +197,15 @@ func BuildRegistry(s *Store) map[string]Handler {
 		},
 		"LRANGE": func(args []string) []byte {
 			return handleLRange(args, s)
+		},
+		"LLEN": func(args []string) []byte {
+			return handleLLen(args, s)
+		},
+		"TYPE": func(args []string) []byte {
+			return handleType(args, s)
+		},
+		"INCR": func(args []string) []byte {
+			return handleIncr(args, s)
 		},
 	}
 }

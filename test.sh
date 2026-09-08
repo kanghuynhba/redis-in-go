@@ -183,7 +183,7 @@ run_single_stage() {
     tmp_output=$(mktemp)
 
     if [ "$silent" = "true" ]; then
-        if CODECRAFTERS_REPOSITORY_DIR="$REPO_DIR" CODECRAFTERS_TEST_CASES_JSON="$json" "$TESTER_BIN" > "$tmp_output" 2>&1; then
+        if CODECRAFTERS_REPOSITORY_DIR="$REPO_DIR" CODECRAFTERS_TEST_CASES_JSON="$json" "$TESTER_BIN" >"$tmp_output" 2>&1; then
             echo -e "  ${GREEN}✔${NC}  ${BOLD}Stage #$num${NC} [${CYAN}$slug${NC}]: $title ${GREEN}(Passed)${NC}"
             rm -f "$tmp_output"
             return 0
@@ -208,7 +208,7 @@ run_group() {
     local all_passed=true
 
     for item in "${ALL_STAGES[@]}"; do
-        IFS="|" read -r num slug title group <<< "$item"
+        IFS="|" read -r num slug title group <<<"$item"
         if [ "$target_group" = "all" ] || [ "$group" = "$target_group" ]; then
             if ! run_single_stage "$num" "$slug" "$title" "true"; then
                 all_passed=false
@@ -226,80 +226,80 @@ run_group() {
 TARGET="${1:-}"
 
 case "$TARGET" in
-    "")
-        # Default: run base stages waterfall (1-7)
-        run_group "base" "Base Stages (1-7)"
-        ;;
-    all)
-        run_group "all" "ALL (1-124)"
-        ;;
-    base)
-        run_group "base" "Base Stages (1-7)"
-        ;;
-    lists|list)
-        run_group "lists" "Lists (8-18)"
-        ;;
-    streams|stream)
-        run_group "streams" "Streams (19-31)"
-        ;;
-    tx|transactions)
-        run_group "tx" "Transactions (32-42)"
-        ;;
-    watch|locking)
-        run_group "watch" "Optimistic Locking (43-50)"
-        ;;
-    repl|replication)
-        run_group "repl" "Replication (51-68)"
-        ;;
-    rdb)
-        run_group "rdb" "RDB Persistence (69-74)"
-        ;;
-    aof)
-        run_group "aof" "AOF Persistence (75-84)"
-        ;;
-    pubsub)
-        run_group "pubsub" "Pub/Sub (85-91)"
-        ;;
-    zset|sorted_sets)
-        run_group "zset" "Sorted Sets (92-99)"
-        ;;
-    bitmaps|bit)
-        run_group "bitmaps" "Bitmaps (100-108)"
-        ;;
-    geo|geospatial)
-        run_group "geo" "Geospatial (109-116)"
-        ;;
-    acl|auth)
-        run_group "acl" "Authentication (117-124)"
-        ;;
-    list-all|stages)
-        echo -e "${BOLD}Available Stages (CodeCrafters Official Order 1-124):${NC}"
-        for item in "${ALL_STAGES[@]}"; do
-            IFS="|" read -r num slug title group <<< "$item"
-            printf "  ${YELLOW}%3d${NC} | ${CYAN}%-6s${NC} | ${MAGENTA}%-10s${NC} | %s\n" "$num" "$slug" "[$group]" "$title"
-        done
-        ;;
-    *)
-        # Search by number or slug
-        found=false
-        for item in "${ALL_STAGES[@]}"; do
-            IFS="|" read -r num slug title group <<< "$item"
-            if [ "$TARGET" = "$num" ] || [ "$TARGET" = "$slug" ]; then
-                found=true
-                run_single_stage "$num" "$slug" "$title" "false"
-                break
-            fi
-        done
-
-        if [ "$found" = "false" ]; then
-            echo -e "${RED}Unknown stage or category: '$TARGET'${NC}\n"
-            echo -e "${BOLD}Usage:${NC}"
-            echo -e "  ./test.sh                 - Run Base stages waterfall (1-7)"
-            echo -e "  ./test.sh all             - Run ALL 124 stages across all extensions"
-            echo -e "  ./test.sh <number|slug>   - Run a specific stage (e.g. ./test.sh 8, ./test.sh mh6)"
-            echo -e "  ./test.sh <group>         - Run group (base, lists, streams, tx, watch, repl, rdb, aof, pubsub, zset, bitmaps, geo, acl)"
-            echo -e "  ./test.sh list-all        - List all 124 available stages in official order"
-            exit 1
+"")
+    # Default: run base stages waterfall (1-7)
+    run_group "base" "Base Stages (1-7)"
+    ;;
+all)
+    run_group "all" "ALL (1-124)"
+    ;;
+base)
+    run_group "base" "Base Stages (1-7)"
+    ;;
+lists | list)
+    run_group "lists" "Lists (8-18)"
+    ;;
+streams | stream)
+    run_group "streams" "Streams (19-31)"
+    ;;
+tx | transactions)
+    run_group "tx" "Transactions (32-42)"
+    ;;
+watch | locking)
+    run_group "watch" "Optimistic Locking (43-50)"
+    ;;
+repl | replication)
+    run_group "repl" "Replication (51-68)"
+    ;;
+rdb)
+    run_group "rdb" "RDB Persistence (69-74)"
+    ;;
+aof)
+    run_group "aof" "AOF Persistence (75-84)"
+    ;;
+pubsub)
+    run_group "pubsub" "Pub/Sub (85-91)"
+    ;;
+zset | sorted_sets)
+    run_group "zset" "Sorted Sets (92-99)"
+    ;;
+bitmaps | bit)
+    run_group "bitmaps" "Bitmaps (100-108)"
+    ;;
+geo | geospatial)
+    run_group "geo" "Geospatial (109-116)"
+    ;;
+acl | auth)
+    run_group "acl" "Authentication (117-124)"
+    ;;
+list-all | stages)
+    echo -e "${BOLD}Available Stages (CodeCrafters Official Order 1-124):${NC}"
+    for item in "${ALL_STAGES[@]}"; do
+        IFS="|" read -r num slug title group <<<"$item"
+        printf "  ${YELLOW}%3d${NC} | ${CYAN}%-6s${NC} | ${MAGENTA}%-10s${NC} | %s\n" "$num" "$slug" "[$group]" "$title"
+    done
+    ;;
+*)
+    # Search by number or slug
+    found=false
+    for item in "${ALL_STAGES[@]}"; do
+        IFS="|" read -r num slug title group <<<"$item"
+        if [ "$TARGET" = "$num" ] || [ "$TARGET" = "$slug" ]; then
+            found=true
+            run_single_stage "$num" "$slug" "$title" "false"
+            break
         fi
-        ;;
+    done
+
+    if [ "$found" = "false" ]; then
+        echo -e "${RED}Unknown stage or category: '$TARGET'${NC}\n"
+        echo -e "${BOLD}Usage:${NC}"
+        echo -e "  ./test.sh                 - Run Base stages waterfall (1-7)"
+        echo -e "  ./test.sh all             - Run ALL 124 stages across all extensions"
+        echo -e "  ./test.sh <number|slug>   - Run a specific stage (e.g. ./test.sh 8, ./test.sh mh6)"
+        echo -e "  ./test.sh <group>         - Run group (base, lists, streams, tx, watch, repl, rdb, aof, pubsub, zset, bitmaps, geo, acl)"
+        echo -e "  ./test.sh list-all        - List all 124 available stages in official order"
+        exit 1
+    fi
+    ;;
 esac
