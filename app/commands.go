@@ -110,19 +110,6 @@ func handleLRange(args []string, s *Store) []byte {
 	start, _ := strconv.Atoi(args[1])
 	stop, _ := strconv.Atoi(args[2])
 
-	list_len, _ := s.LLen(key)
-
-	start = max(start, -list_len)
-	stop = min(stop, list_len-1)
-
-	if start < 0 {
-		start += list_len
-	}
-
-	if stop < 0 {
-		stop += list_len
-	}
-
 	values, err := s.LRange(key, start, stop)
 
 	if err != nil {
@@ -130,6 +117,22 @@ func handleLRange(args []string, s *Store) []byte {
 	}
 
 	return EncodeStringArray(values)
+}
+
+func handleLPush(args []string, s *Store) []byte {
+	if len(args) < 2 {
+		return EncodeError(ErrWrongArgs("RPUSH"))
+	}
+
+	key := args[0]
+
+	idx, err := s.RPush(key, args[1:]...)
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	return EncodeInteger(idx)
 }
 
 func handleLLen(args []string, s *Store) []byte {
@@ -197,6 +200,9 @@ func BuildRegistry(s *Store) map[string]Handler {
 		},
 		"LRANGE": func(args []string) []byte {
 			return handleLRange(args, s)
+		},
+		"LPUSH": func(args []string) []byte {
+			return handleLPush(args, s)
 		},
 		"LLEN": func(args []string) []byte {
 			return handleLLen(args, s)

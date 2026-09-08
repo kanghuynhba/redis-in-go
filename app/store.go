@@ -63,24 +63,25 @@ func (s *Store) RPush(key string, values ...string) (int, error) {
 	obj, exists := s.lookup(key)
 
 	if !exists {
-		newList := append([]string{}, values...)
+		newList := NewDeque()
+		newList.PushMultipleValues(values, true)
 		s.db[key] = Object{
 			Type: TypeList, Data: newList,
 		}
-		return len(newList), nil
+		return newList.Len(), nil
 	}
 
 	if err := checkType(obj.Type, TypeList); err != nil {
 		return 0, err
 	}
 
-	list := obj.Data.([]string)
-	list = append(list, values...)
+	list := obj.Data.(*Deque)
+	list.PushMultipleValues(values, true)
 
 	obj.Data = list
 	s.db[key] = obj
 
-	return len(list), nil
+	return list.Len(), nil
 }
 
 func (s *Store) LRange(key string, start, stop int) ([]string, error) {
@@ -97,7 +98,8 @@ func (s *Store) LRange(key string, start, stop int) ([]string, error) {
 		return nil, err
 	}
 
-	list_len := len(obj.Data.([]string))
+	list := obj.Data.(*Deque)
+	list_len := list.Len()
 
 	start = max(start, -list_len)
 	stop = min(stop, list_len-1)
@@ -114,9 +116,7 @@ func (s *Store) LRange(key string, start, stop int) ([]string, error) {
 		return []string{}, nil
 	}
 
-	values := obj.Data.([]string)
-
-	return values[start : stop+1], nil
+	return list.Range(start, stop), nil
 }
 
 func (s *Store) LLen(key string) (int, error) {
@@ -133,7 +133,9 @@ func (s *Store) LLen(key string) (int, error) {
 		return 0, err
 	}
 
-	return len(obj.Data.([]string)), nil
+	list := obj.Data.(*Deque)
+
+	return list.Len(), nil
 }
 
 func (s *Store) Type(key string) string {
