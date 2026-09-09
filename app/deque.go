@@ -81,6 +81,30 @@ func (d *Deque) PopFront() (string, bool) {
 	return val, true
 }
 
+func (d *Deque) PopMultipleValues(del_keys int, isBack bool) []string {
+	removed_vals := []string{}
+	if isBack {
+		for i := 0; i < del_keys; i++ {
+			val, isValid := d.PopBack()
+			if !isValid {
+				break
+			}
+			removed_vals = append(removed_vals, val)
+		}
+		return removed_vals
+	}
+
+	for i := 0; i < del_keys; i++ {
+		val, isValid := d.PopFront()
+		if !isValid {
+			break
+		}
+		removed_vals = append(removed_vals, val)
+	}
+
+	return removed_vals
+}
+
 func (d *Deque) Range(start, stop int) []string {
 	values := []string{}
 

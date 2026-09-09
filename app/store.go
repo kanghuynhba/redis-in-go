@@ -57,31 +57,7 @@ func (s *Store) Get(key string) (string, bool, error) {
 }
 
 func (s *Store) RPush(key string, values ...string) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	obj, exists := s.lookup(key)
-
-	if !exists {
-		newList := NewDeque()
-		newList.PushMultipleValues(values, true)
-		s.db[key] = Object{
-			Type: TypeList, Data: newList,
-		}
-		return newList.Len(), nil
-	}
-
-	if err := checkType(obj.Type, TypeList); err != nil {
-		return 0, err
-	}
-
-	list := obj.Data.(*Deque)
-	list.PushMultipleValues(values, true)
-
-	obj.Data = list
-	s.db[key] = obj
-
-	return list.Len(), nil
+	return s.push(key, true, values...)
 }
 
 func (s *Store) LRange(key string, start, stop int) ([]string, error) {
@@ -119,6 +95,10 @@ func (s *Store) LRange(key string, start, stop int) ([]string, error) {
 	return list.Range(start, stop), nil
 }
 
+func (s *Store) LPush(key string, values ...string) (int, error) {
+	return s.push(key, false, values...)
+}
+
 func (s *Store) LLen(key string) (int, error) {
 	s.mu.RLock()
 	obj, exists := s.lookup(key)
@@ -136,6 +116,10 @@ func (s *Store) LLen(key string) (int, error) {
 	list := obj.Data.(*Deque)
 
 	return list.Len(), nil
+}
+
+func (s *Store) LPop(key string, del_keys int) ([]string, error) {
+	return s.pop(key, del_keys, false)
 }
 
 func (s *Store) Type(key string) string {
@@ -230,4 +214,59 @@ func (s *Store) sweepExpiredKeys() {
 			delete(s.db, key)
 		}
 	}
+}
+
+func (s *Store) push(key string, isBack bool, values ...string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	obj, exists := s.lookup(key)
+
+	if !exists {
+		newList := NewDeque()
+		newList.PushMultipleValues(values, isBack)
+		s.db[key] = Object{
+			Type: TypeList, Data: newList,
+		}
+		return newList.Len(), nil
+	}
+
+	if err := checkType(obj.Type, TypeList); err != nil {
+		return 0, err
+	}
+
+	list := obj.Data.(*Deque)
+	list.PushMultipleValues(values, isBack)
+
+	obj.Data = list
+	s.db[key] = obj
+
+	return list.Len(), nil
+}
+
+func (s *Store) pop(key string, del_keys int, isBack bool) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	obj, exists := s.lookup(key)
+
+	values := make([]string, del_keys)
+
+	if !exists {
+		return values, nil
+	}
+
+	if err := checkType(obj.Type, TypeList); err != nil {
+		return values, err
+	}
+
+	list := obj.Data.(*Deque)
+
+	values = list.PopMultipleValues(del_keys, isBack)
+
+	obj.Data = list
+	s.db[key] = obj
+
+	return values, nil
+
 }

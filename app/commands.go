@@ -19,23 +19,30 @@ func ErrUnknownCommand(cmd string) error {
 
 func ErrWrongArgs(cmd string) error {
 	return fmt.Errorf("ERR wrong number of arguments for '%s' command", cmd)
-
 }
 
-// base command
+type CommandHandler struct {
+	store *Store
+}
 
-func handlePing(args []string) []byte {
+func NewCommandHandler(store *Store) *CommandHandler {
+	return &CommandHandler{store: store}
+}
+
+// base commands
+
+func (h *CommandHandler) Ping(args []string) []byte {
 	return EncodeSimpleString("PONG")
 }
 
-func handleEcho(args []string) []byte {
+func (h *CommandHandler) Echo(args []string) []byte {
 	if len(args) != 1 {
 		return EncodeError(ErrWrongArgs("ECHO"))
 	}
 	return EncodeBulkString(args[0])
 }
 
-func handleSet(args []string, s *Store) []byte {
+func (h *CommandHandler) Set(args []string) []byte {
 	if len(args) < 2 {
 		return EncodeError(ErrWrongArgs("SET"))
 	}
@@ -44,7 +51,7 @@ func handleSet(args []string, s *Store) []byte {
 
 	switch len(args) {
 	case 2:
-		s.Set(key, value)
+		h.store.Set(key, value)
 	case 4:
 		time_option := strings.ToUpper(args[2])
 		duration, _ := strconv.Atoi(args[3])
@@ -57,20 +64,20 @@ func handleSet(args []string, s *Store) []byte {
 			ttl = ttl * time.Millisecond
 		}
 
-		s.SetWithExpiry(key, value, ttl)
+		h.store.SetWithExpiry(key, value, ttl)
 	}
 
 	return EncodeSimpleString("OK")
 }
 
-func handleGet(args []string, s *Store) []byte {
+func (h *CommandHandler) Get(args []string) []byte {
 	if len(args) != 1 {
 		return EncodeError(ErrWrongArgs("GET"))
 	}
 
 	key := args[0]
 
-	value, exists, err := s.Get(key)
+	value, exists, err := h.store.Get(key)
 
 	if err != nil {
 		return EncodeError(err)
@@ -82,16 +89,16 @@ func handleGet(args []string, s *Store) []byte {
 	return EncodeBulkString(value)
 }
 
-// lists command
+// list commands
 
-func handleRPush(args []string, s *Store) []byte {
+func (h *CommandHandler) RPush(args []string) []byte {
 	if len(args) < 2 {
 		return EncodeError(ErrWrongArgs("RPUSH"))
 	}
 
 	key := args[0]
 
-	idx, err := s.RPush(key, args[1:]...)
+	idx, err := h.store.RPush(key, args[1:]...)
 
 	if err != nil {
 		return EncodeError(err)
@@ -100,7 +107,7 @@ func handleRPush(args []string, s *Store) []byte {
 	return EncodeInteger(idx)
 }
 
-func handleLRange(args []string, s *Store) []byte {
+func (h *CommandHandler) LRange(args []string) []byte {
 	if len(args) != 3 {
 		return EncodeError(ErrWrongArgs("LRANGE"))
 	}
@@ -110,7 +117,7 @@ func handleLRange(args []string, s *Store) []byte {
 	start, _ := strconv.Atoi(args[1])
 	stop, _ := strconv.Atoi(args[2])
 
-	values, err := s.LRange(key, start, stop)
+	values, err := h.store.LRange(key, start, stop)
 
 	if err != nil {
 		return EncodeError(err)
@@ -119,14 +126,14 @@ func handleLRange(args []string, s *Store) []byte {
 	return EncodeStringArray(values)
 }
 
-func handleLPush(args []string, s *Store) []byte {
+func (h *CommandHandler) LPush(args []string) []byte {
 	if len(args) < 2 {
-		return EncodeError(ErrWrongArgs("RPUSH"))
+		return EncodeError(ErrWrongArgs("LPUSH"))
 	}
 
 	key := args[0]
 
-	idx, err := s.RPush(key, args[1:]...)
+	idx, err := h.store.LPush(key, args[1:]...)
 
 	if err != nil {
 		return EncodeError(err)
@@ -135,48 +142,77 @@ func handleLPush(args []string, s *Store) []byte {
 	return EncodeInteger(idx)
 }
 
-func handleLLen(args []string, s *Store) []byte {
+func (h *CommandHandler) LLen(args []string) []byte {
 	if len(args) != 1 {
 		return EncodeError(ErrWrongArgs("LLEN"))
 	}
 
 	key := args[0]
 
-	len, err := s.LLen(key)
+	length, err := h.store.LLen(key)
 
 	if err != nil {
 		return EncodeError(err)
 	}
 
-	return EncodeInteger(len)
-
+	return EncodeInteger(length)
 }
 
-// streams command
+func (h *CommandHandler) LPop(args []string) []byte {
+	if len(args) < 1 || len(args) > 2 {
+		return EncodeError(ErrWrongArgs("LPOP"))
+	}
 
-func handleType(args []string, s *Store) []byte {
+	key := args[0]
+
+	if len(args) == 1 {
+		val, err := h.store.LPop(key, 1)
+
+		if err != nil {
+			return EncodeError(err)
+		}
+
+		return EncodeBulkString(val[0])
+	}
+	del_keys, err := strconv.Atoi(args[1])
+
+	if err != nil {
+		return EncodeError(ErrWrongArgs("LPOP"))
+	}
+
+	val, err := h.store.LPop(key, del_keys)
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	return EncodeStringArray(val)
+}
+
+// stream commands
+
+func (h *CommandHandler) Type(args []string) []byte {
 	if len(args) != 1 {
 		return EncodeError(ErrWrongArgs("TYPE"))
 	}
 
 	key := args[0]
 
-	keyType := s.Type(key)
+	keyType := h.store.Type(key)
 
 	return EncodeSimpleString(keyType)
-
 }
 
-// transactions command
+// transaction commands
 
-func handleIncr(args []string, s *Store) []byte {
+func (h *CommandHandler) Incr(args []string) []byte {
 	if len(args) != 1 {
 		return EncodeError(ErrWrongArgs("INCR"))
 	}
 
 	key := args[0]
 
-	num, err := s.Incr(key)
+	num, err := h.store.Incr(key)
 
 	if err != nil {
 		return EncodeError(err)
@@ -185,33 +221,22 @@ func handleIncr(args []string, s *Store) []byte {
 	return EncodeInteger(num)
 }
 
+// command register table
+
 func BuildRegistry(s *Store) map[string]Handler {
+	h := NewCommandHandler(s)
+
 	return map[string]Handler{
-		"PING": handlePing,
-		"ECHO": handleEcho,
-		"SET": func(args []string) []byte {
-			return handleSet(args, s)
-		},
-		"GET": func(args []string) []byte {
-			return handleGet(args, s)
-		},
-		"RPUSH": func(args []string) []byte {
-			return handleRPush(args, s)
-		},
-		"LRANGE": func(args []string) []byte {
-			return handleLRange(args, s)
-		},
-		"LPUSH": func(args []string) []byte {
-			return handleLPush(args, s)
-		},
-		"LLEN": func(args []string) []byte {
-			return handleLLen(args, s)
-		},
-		"TYPE": func(args []string) []byte {
-			return handleType(args, s)
-		},
-		"INCR": func(args []string) []byte {
-			return handleIncr(args, s)
-		},
+		"PING":   h.Ping,
+		"ECHO":   h.Echo,
+		"SET":    h.Set,
+		"GET":    h.Get,
+		"RPUSH":  h.RPush,
+		"LPUSH":  h.LPush,
+		"LRANGE": h.LRange,
+		"LLEN":   h.LLen,
+		"LPOP":   h.LPop,
+		"TYPE":   h.Type,
+		"INCR":   h.Incr,
 	}
 }
