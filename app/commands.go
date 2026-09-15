@@ -189,6 +189,29 @@ func (h *CommandHandler) LPop(args []string) []byte {
 	return EncodeStringArray(val)
 }
 
+func (h *CommandHandler) BLPop(args []string) []byte {
+	if len(args) != 2 {
+		return EncodeError(ErrWrongArgs("BLPOP"))
+	}
+
+	key := args[0]
+	timeoutSec, err := strconv.ParseFloat(args[1], 64)
+	if err != nil {
+		return EncodeError(ErrNotInteger)
+	}
+
+	timeout := time.Duration(timeoutSec * float64(time.Second))
+	val, timedOut, err := h.store.BLPop(key, timeout)
+	if err != nil {
+		return EncodeError(err)
+	}
+	if timedOut {
+		return EncodeNullArray()
+	}
+
+	return EncodeStringArray([]string{key, val})
+}
+
 // stream commands
 
 func (h *CommandHandler) Type(args []string) []byte {
@@ -201,6 +224,23 @@ func (h *CommandHandler) Type(args []string) []byte {
 	keyType := h.store.Type(key)
 
 	return EncodeSimpleString(keyType)
+}
+
+func (h *CommandHandler) XAdd(args []string) []byte {
+	if len(args) <= 2 {
+		return EncodeError(ErrWrongArgs("XADD"))
+	}
+
+	key := args[0]
+	ID := args[1]
+
+	ID, err := h.store.XAdd(key, ID, args[2:])
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	return EncodeBulkString(ID)
 }
 
 // transaction commands
@@ -236,7 +276,9 @@ func BuildRegistry(s *Store) map[string]Handler {
 		"LRANGE": h.LRange,
 		"LLEN":   h.LLen,
 		"LPOP":   h.LPop,
+		"BLPOP":  h.BLPop,
 		"TYPE":   h.Type,
+		"XADD":   h.XAdd,
 		"INCR":   h.Incr,
 	}
 }

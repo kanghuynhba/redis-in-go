@@ -10,13 +10,17 @@ import (
 var ErrWrongType = errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
 
 type Store struct {
-	mu sync.RWMutex
-	db map[string]Object
+	mu      sync.RWMutex
+	waiters map[string][]chan bool
+	db      map[string]Object
+	expires map[string]time.Time
 }
 
 func NewStore() *Store {
 	s := &Store{
-		db: make(map[string]Object),
+		waiters: make(map[string][]chan bool),
+		db:      make(map[string]Object),
+		expires: make(map[string]time.Time),
 	}
 
 	go s.startActiveCleaner(100 * time.Millisecond)
@@ -28,15 +32,49 @@ func (s *Store) Set(key, value string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.db[key] = Object{TypeString, value, nil}
+	s.db[key] = Object{Type: TypeString, Data: value}
+	delete(s.expires, key)
 }
 
 func (s *Store) SetWithExpiry(key, value string, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	expiry := time.Now().Add(ttl)
-	s.db[key] = Object{TypeString, value, &expiry}
+	s.db[key] = Object{Type: TypeString, Data: value}
+	s.expires[key] = time.Now().Add(ttl)
+}
+
+func (s *Store) Expire(key string, ttl time.Duration) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.lookup(key); !exists {
+		return false
+	}
+
+	s.expires[key] = time.Now().Add(ttl)
+	return true
+}
+
+func (s *Store) TTL(key string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.lookup(key); !exists {
+		return -2 // key does not exists
+	}
+
+	expiry, hasExpiry := s.expires[key]
+	if !hasExpiry {
+		return -1 // key exists but has no expiry
+	}
+
+	remaining := time.Until(expiry)
+	if remaining <= 0 {
+		return -2
+	}
+
+	return int64(remaining.Seconds())
 }
 
 func (s *Store) Get(key string) (string, bool, error) {
@@ -62,10 +100,10 @@ func (s *Store) RPush(key string, values ...string) (int, error) {
 
 func (s *Store) LRange(key string, start, stop int) ([]string, error) {
 	s.mu.RLock()
-	obj, exist := s.lookup(key)
+	obj, exists := s.lookup(key)
 	s.mu.RUnlock()
 
-	if !exist {
+	if !exists {
 		s.delete(key)
 		return []string{}, nil
 	}
@@ -122,6 +160,86 @@ func (s *Store) LPop(key string, del_keys int) ([]string, error) {
 	return s.pop(key, del_keys, false)
 }
 
+func (s *Store) BLPop(key string, timeout time.Duration) (string, bool, error) {
+	hasValue, err := s.registerBLPopWaiter(key)
+	if err != nil {
+		return "", false, err
+	}
+
+	var timeoutChan <-chan time.Time
+	if timeout > 0 {
+		timeoutChan = time.After(timeout)
+	}
+
+	select {
+	case <-hasValue:
+		values, err := s.LPop(key, 1)
+		if err != nil || len(values) == 0 {
+			return "", true, err
+		}
+		return values[0], false, nil
+
+	case <-timeoutChan:
+		if !s.removeBLPopWaiter(key, hasValue) {
+			select {
+			case <-hasValue:
+				values, err := s.LPop(key, 1)
+				if err == nil && len(values) > 0 {
+					return values[0], false, nil
+				}
+			default:
+			}
+		}
+		return "", true, nil
+	}
+}
+
+func (s *Store) registerBLPopWaiter(key string) (chan bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	hasValue := make(chan bool, 1)
+
+	if len(s.waiters[key]) > 0 {
+		s.waiters[key] = append(s.waiters[key], hasValue)
+		return hasValue, nil
+	}
+
+	obj, exists := s.lookup(key)
+	if exists {
+		if err := checkType(obj.Type, TypeList); err != nil {
+			return nil, err
+		}
+
+		list := obj.Data.(*Deque)
+		if list.Len() > 0 {
+			hasValue <- true
+			return hasValue, nil
+		}
+	}
+
+	s.waiters[key] = append(s.waiters[key], hasValue)
+	return hasValue, nil
+}
+
+func (s *Store) removeBLPopWaiter(key string, ch chan bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	waitList, exists := s.waiters[key]
+	if !exists {
+		return false
+	}
+
+	for i, c := range waitList {
+		if c == ch {
+			s.waiters[key] = append(waitList[:i], waitList[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) Type(key string) string {
 	s.mu.RLock()
 	obj, exists := s.lookup(key)
@@ -133,6 +251,64 @@ func (s *Store) Type(key string) string {
 	}
 
 	return string(obj.Type)
+}
+
+func (s *Store) lookupWriteOrCreate(key string, expectedType ObjectType) (any, error) {
+	obj, exists := s.lookup(key)
+	if !exists {
+		var data any
+
+		switch expectedType {
+		case TypeString:
+			str := ""
+			data = &str
+		case TypeList:
+			data = NewDeque()
+		case TypeStream:
+			data = NewStream()
+		default:
+			return nil, errors.New("unsupported object type")
+		}
+
+		s.db[key] = *NewObject(expectedType, data)
+		delete(s.expires, key)
+		return data, nil
+	}
+
+	if err := checkType(obj.Type, expectedType); err != nil {
+		return nil, err
+	}
+
+	return obj.Data, nil
+}
+
+func (s *Store) getStreamForWrite(key string) (*Stream, error) {
+	data, err := s.lookupWriteOrCreate(key, TypeStream)
+	if err != nil {
+		return nil, err
+	}
+	return data.(*Stream), nil
+}
+
+func (s *Store) getListForWrite(key string) (*Deque, error) {
+	data, err := s.lookupWriteOrCreate(key, TypeList)
+	if err != nil {
+		return nil, err
+	}
+	return data.(*Deque), nil
+}
+
+func (s *Store) XAdd(key, ID string, values []string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	stream, err := s.getStreamForWrite(key)
+	if err != nil {
+		return "", err
+	}
+
+	stream.PushBack(ID, values)
+	return ID, nil
 }
 
 func (s *Store) Incr(key string) (int, error) {
@@ -172,7 +348,7 @@ func (s *Store) lookup(key string) (Object, bool) {
 		return Object{}, false
 	}
 
-	if obj.ExpiredAt != nil && time.Now().After(*obj.ExpiredAt) {
+	if expiry, hasExpiry := s.expires[key]; hasExpiry && time.Now().After(expiry) {
 		return Object{}, false
 	}
 
@@ -182,11 +358,9 @@ func (s *Store) lookup(key string) (Object, bool) {
 func (s *Store) delete(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, exists := s.db[key]
 
-	if exists {
-		delete(s.db, key)
-	}
+	delete(s.db, key)
+	delete(s.expires, key)
 }
 
 func checkType(objType, expectedType ObjectType) error {
@@ -209,9 +383,11 @@ func (s *Store) sweepExpiredKeys() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for key, val := range s.db {
-		if val.ExpiredAt != nil && time.Now().After(*val.ExpiredAt) {
+	now := time.Now()
+	for key, expiry := range s.expires {
+		if now.After(expiry) {
 			delete(s.db, key)
+			delete(s.expires, key)
 		}
 	}
 }
@@ -220,26 +396,28 @@ func (s *Store) push(key string, isBack bool, values ...string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	obj, exists := s.lookup(key)
-
-	if !exists {
-		newList := NewDeque()
-		newList.PushMultipleValues(values, isBack)
-		s.db[key] = Object{
-			Type: TypeList, Data: newList,
-		}
-		return newList.Len(), nil
-	}
-
-	if err := checkType(obj.Type, TypeList); err != nil {
+	list, err := s.getListForWrite(key)
+	if err != nil {
 		return 0, err
 	}
 
-	list := obj.Data.(*Deque)
 	list.PushMultipleValues(values, isBack)
 
-	obj.Data = list
-	s.db[key] = obj
+	// Notify waiting BLPOP clients (at most len(values) waiters)
+	waitList, exists := s.waiters[key]
+
+	if exists && len(waitList) > 0 {
+		numToNotify := len(values)
+
+		if numToNotify > len(waitList) {
+			numToNotify = len(waitList)
+		}
+
+		for i := 0; i < numToNotify; i++ {
+			waitList[i] <- true
+		}
+		s.waiters[key] = waitList[numToNotify:]
+	}
 
 	return list.Len(), nil
 }
@@ -253,7 +431,7 @@ func (s *Store) pop(key string, del_keys int, isBack bool) ([]string, error) {
 	values := make([]string, del_keys)
 
 	if !exists {
-		return values, nil
+		return nil, nil
 	}
 
 	if err := checkType(obj.Type, TypeList); err != nil {

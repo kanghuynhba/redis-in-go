@@ -1,9 +1,5 @@
 package main
 
-import (
-	"time"
-)
-
 type ObjectType string
 
 const (
@@ -14,7 +10,12 @@ const (
 )
 
 type Object struct {
-	Type      ObjectType
-	Data      any
-	ExpiredAt *time.Time
+	Type ObjectType
+	Data any
+}
+
+func NewObject(objectType ObjectType, data any) *Object {
+	return &Object{
+		Type: objectType, Data: data,
+	}
 }

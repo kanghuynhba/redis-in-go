@@ -30,6 +30,10 @@ func EncodeStringArray(str_arr []string) []byte {
 	return []byte(encode_str)
 }
 
+func EncodeNullArray() []byte {
+	return []byte(fmt.Sprintf("*%d\r\n", -1))
+}
+
 func EncodeError(msg error) []byte {
 	return []byte(fmt.Sprintf("-%s\r\n", msg))
 }
