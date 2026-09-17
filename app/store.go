@@ -1,13 +1,10 @@
 package main
 
 import (
-	"errors"
 	"strconv"
 	"sync"
 	"time"
 )
-
-var ErrWrongType = errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
 
 type Store struct {
 	mu      sync.RWMutex
@@ -267,7 +264,7 @@ func (s *Store) lookupWriteOrCreate(key string, expectedType ObjectType) (any, e
 		case TypeStream:
 			data = NewStream()
 		default:
-			return nil, errors.New("unsupported object type")
+			return nil, ErrUnsupportedType
 		}
 
 		s.db[key] = *NewObject(expectedType, data)
@@ -307,7 +304,12 @@ func (s *Store) XAdd(key, ID string, values []string) (string, error) {
 		return "", err
 	}
 
-	stream.PushBack(ID, values)
+	err = stream.Append(ID, values)
+
+	if err != nil {
+		return "", err
+	}
+
 	return ID, nil
 }
 

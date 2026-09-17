@@ -1,25 +1,12 @@
 package main
 
 import (
-	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Handler func(args []string) []byte
-
-var ErrSyntax = errors.New("ERR syntax error")
-var ErrNotInteger = errors.New("ERR value is not an integer or out of range")
-
-func ErrUnknownCommand(cmd string) error {
-	return fmt.Errorf("ERR unknown command '%s'", cmd)
-}
-
-func ErrWrongArgs(cmd string) error {
-	return fmt.Errorf("ERR wrong number of arguments for '%s' command", cmd)
-}
 
 type CommandHandler struct {
 	store *Store

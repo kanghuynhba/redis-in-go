@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"strconv"
 )
 
@@ -20,7 +19,7 @@ func (p *RESPDecoder) readDecimal() (int, error) {
 	idx := bytes.Index(p.buf[p.pos:], []byte("\r\n"))
 
 	if idx == -1 {
-		return -1, errors.New("No number found")
+		return -1, ErrNoNumberFound
 	}
 
 	numBytes := p.buf[p.pos : p.pos+idx]
@@ -33,11 +32,11 @@ func (p *RESPDecoder) readDecimal() (int, error) {
 
 func (p *RESPDecoder) parseBulkHeader(delim byte) (int, error) {
 	if len(p.buf[p.pos:]) == 0 {
-		return -1, errors.New("empty stream: no data to parse")
+		return -1, ErrEmptyStream
 	}
 
 	if p.buf[p.pos] != delim {
-		return -1, errors.New("wrong delimiter found!")
+		return -1, ErrWrongDelim
 	}
 
 	// skip the delim character (e.g '*', '$',...)
@@ -48,7 +47,7 @@ func (p *RESPDecoder) parseBulkHeader(delim byte) (int, error) {
 
 func (p *RESPDecoder) Decode() ([]string, error) {
 	if len(p.buf[p.pos:]) == 0 {
-		return nil, errors.New("empty buffer")
+		return nil, ErrEmptyBuffer
 	}
 
 	count, err := p.parseBulkHeader(byte('*'))
