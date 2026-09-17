@@ -295,7 +295,7 @@ func (s *Store) getListForWrite(key string) (*Deque, error) {
 	return data.(*Deque), nil
 }
 
-func (s *Store) XAdd(key, ID string, values []string) (string, error) {
+func (s *Store) XAdd(key, rawID string, values []string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -304,7 +304,7 @@ func (s *Store) XAdd(key, ID string, values []string) (string, error) {
 		return "", err
 	}
 
-	err = stream.Append(ID, values)
+	ID, err := stream.Append(rawID, values)
 
 	if err != nil {
 		return "", err
