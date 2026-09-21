@@ -18,10 +18,10 @@ func handleConnection(conn net.Conn, register map[string]Handler) {
 			break
 		}
 
-		parse_result, err := RESPParser(buf[:n])
+		parseResult, err := RESPParser(buf[:n])
 
-		command := strings.ToUpper(parse_result[0])
-		args := parse_result[1:]
+		command := strings.ToUpper(parseResult[0])
+		args := parseResult[1:]
 
 		handler, exists := register[command]
 

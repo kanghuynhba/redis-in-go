@@ -1,24 +1,46 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 )
 
+type StreamID struct {
+	MilliSec  int64
+	SeqNumber int
+}
+
+func (sid StreamID) String() string {
+	return fmt.Sprintf("%d-%d", sid.MilliSec, sid.SeqNumber)
+}
+
+func (sid StreamID) Compare(other StreamID) int {
+	if c := cmp.Compare(sid.MilliSec, other.MilliSec); c != 0 {
+		return c
+	}
+
+	return cmp.Compare(sid.SeqNumber, other.SeqNumber)
+}
+
 type StreamEntry struct {
-	ID     string
+	ID     StreamID
 	Values []string
 }
 
-func (se *StreamEntry) DecodeID() (time.Time, int) {
-	parts := strings.Split(se.ID, "-")
+func (se StreamEntry) EncodeRESP() []byte {
+	entryArr := NewEncodeArray()
+	entryArr.Append(EncodeBulkString(se.ID.String()))
 
-	ms, _ := strconv.ParseInt(parts[0], 10, 64)
-	seq, _ := strconv.Atoi(parts[1])
+	valArr := NewEncodeArray()
+	for _, val := range se.Values {
+		valArr.Append(EncodeBulkString(val))
+	}
+	entryArr.Append(valArr.Bytes())
 
-	return time.UnixMilli(ms), seq
+	return entryArr.Bytes()
 }
 
 type Stream []StreamEntry
@@ -28,92 +50,79 @@ func NewStream() *Stream {
 	return &s
 }
 
-func (s *Stream) validateOrGenerateID(rawID string) (string, error) {
+func (s *Stream) validateOrGenerateID(rawID string) (StreamID, error) {
 	lastEntry, exists := s.Last()
-	var ID string
 
-	currentTime := time.Now().Truncate(time.Millisecond)
+	lastID := lastEntry.ID
+
+	currentTime := time.Now().UnixMilli()
 	currentSeqNumb := 0
 
 	// handling "*"
 	if rawID == "*" {
-		if exists {
-			lastMs, lastSeqNumb := lastEntry.DecodeID()
-			if lastMs == currentTime {
-				currentSeqNumb = lastSeqNumb + 1
-			}
+		if exists && lastID.MilliSec == currentTime {
+			currentSeqNumb = lastID.SeqNumber + 1
 		}
-		ID = fmt.Sprintf("%d-%d", currentTime.UnixMilli(), currentSeqNumb)
-		return ID, nil
+		return StreamID{MilliSec: currentTime, SeqNumber: currentSeqNumb}, nil
 	}
 
 	// handling "ms-*"
 	parts := strings.Split(rawID, "-")
-	msInt, err := strconv.ParseInt(parts[0], 10, 64)
 
-	if err != nil {
-		return "", ErrInvalidStreamID
+	if len(parts) != 2 {
+		return StreamID{}, ErrInvalidStreamID
 	}
 
-	ms := time.UnixMilli(msInt)
+	ms, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return StreamID{}, ErrInvalidStreamID
+	}
 
 	if parts[1] == "*" {
 		if exists {
-			lastMs, lastSeqNumb := lastEntry.DecodeID()
-			timeCompare := ms.Compare(lastMs)
-
-			if timeCompare == -1 {
-				return "", ErrStreamIDSmaller
-			} else if timeCompare == 0 {
-				currentSeqNumb = lastSeqNumb + 1
+			if ms < lastID.MilliSec {
+				return StreamID{}, ErrStreamIDSmaller
+			} else if ms == lastID.MilliSec {
+				currentSeqNumb = lastID.SeqNumber + 1
 			}
-
-		} else if msInt == 0 {
+		} else if ms == 0 {
 			currentSeqNumb = 1
 		}
 
-		ID = fmt.Sprintf("%d-%d", msInt, currentSeqNumb)
-		return ID, nil
+		return StreamID{MilliSec: ms, SeqNumber: currentSeqNumb}, nil
 	}
 
 	// handling "ms-seqNumb"
 	seqNumb, err := strconv.Atoi(parts[1])
-
 	if err != nil {
-		return "", ErrInvalidStreamID
+		return StreamID{}, ErrInvalidStreamID
 	}
 
-	if msInt == 0 && seqNumb == 0 {
-		return "", ErrStreamIDZero
+	if ms == 0 && seqNumb == 0 {
+		return StreamID{}, ErrStreamIDZero
 	}
 
 	if exists {
-		lastMs, lastSeqNumb := lastEntry.DecodeID()
-		timeCompare := ms.Compare(lastMs)
-		if timeCompare == -1 || (timeCompare == 0 && lastSeqNumb >= seqNumb) {
-			return "", ErrStreamIDSmaller
+		if ms < lastID.MilliSec || (ms == lastID.MilliSec && lastID.SeqNumber >= seqNumb) {
+			return StreamID{}, ErrStreamIDSmaller
 		}
 	}
-	ID = fmt.Sprintf("%d-%d", msInt, seqNumb)
-	return ID, nil
+
+	return StreamID{MilliSec: ms, SeqNumber: seqNumb}, nil
 }
 
 func (s *Stream) Append(rawID string, values []string) (string, error) {
-	ID, err := s.validateOrGenerateID(rawID)
-
+	id, err := s.validateOrGenerateID(rawID)
 	if err != nil {
 		return "", err
 	}
 
-	fmt.Println(ID)
+	*s = append(*s, StreamEntry{ID: id, Values: values})
 
-	*s = append(*s, StreamEntry{ID: ID, Values: values})
-
-	return ID, nil
+	return id.String(), nil
 }
 
 func (s *Stream) Last() (StreamEntry, bool) {
-
 	if s == nil || s.Len() == 0 {
 		return StreamEntry{}, false
 	}
@@ -126,4 +135,73 @@ func (s *Stream) Len() int {
 		return 0
 	}
 	return len(*s)
+}
+
+func (s *Stream) LowerBound(id StreamID) int {
+	left, right := 0, s.Len()
+	for left < right {
+		mid := left + (right-left)/2
+		if (*s)[mid].ID.Compare(id) >= 0 {
+			right = mid
+		} else {
+			left = mid + 1
+		}
+	}
+	return left
+}
+
+func (s *Stream) UpperBound(id StreamID) int {
+	left, right := 0, s.Len()
+	for left < right {
+		mid := left + (right-left)/2
+		if (*s)[mid].ID.Compare(id) > 0 {
+			right = mid
+		} else {
+			left = mid + 1
+		}
+	}
+	return left
+}
+
+func (s *Stream) validateRangeID(rawID string) (StreamID, error) {
+
+	if rawID == "+" {
+		lastEntry, exists := s.Last()
+		if !exists {
+			return StreamID{}, ErrInvalidStreamID
+		}
+		return lastEntry.ID, nil
+	}
+
+	parts := strings.Split(rawID, "-")
+
+	if len(parts) != 2 {
+		return StreamID{}, ErrInvalidStreamID
+	}
+
+	ms, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return StreamID{}, ErrInvalidStreamID
+	}
+
+	seqNumb, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return StreamID{}, ErrInvalidStreamID
+	}
+
+	return StreamID{MilliSec: ms, SeqNumber: seqNumb}, nil
+}
+
+func (s *Stream) Range(rawStartID, rawEndID string) ([]StreamEntry, error) {
+
+	start, err := s.validateRangeID(rawStartID)
+	end, err := s.validateRangeID(rawEndID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	startIdx := s.LowerBound(start)
+	endIdx := s.UpperBound(end)
+	return (*s)[startIdx:endIdx], nil
 }

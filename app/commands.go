@@ -40,14 +40,14 @@ func (h *CommandHandler) Set(args []string) []byte {
 	case 2:
 		h.store.Set(key, value)
 	case 4:
-		time_option := strings.ToUpper(args[2])
+		timeOption := strings.ToUpper(args[2])
 		duration, _ := strconv.Atoi(args[3])
 
 		ttl := time.Duration(duration)
 
-		if time_option == "EX" {
+		if timeOption == "EX" {
 			ttl = ttl * time.Second
-		} else if time_option == "PX" {
+		} else if timeOption == "PX" {
 			ttl = ttl * time.Millisecond
 		}
 
@@ -110,7 +110,13 @@ func (h *CommandHandler) LRange(args []string) []byte {
 		return EncodeError(err)
 	}
 
-	return EncodeStringArray(values)
+	encodeArray := NewEncodeArray()
+
+	for _, value := range values {
+		encodeArray.Append(EncodeBulkString(value))
+	}
+
+	return encodeArray.Bytes()
 }
 
 func (h *CommandHandler) LPush(args []string) []byte {
@@ -161,19 +167,25 @@ func (h *CommandHandler) LPop(args []string) []byte {
 
 		return EncodeBulkString(val[0])
 	}
-	del_keys, err := strconv.Atoi(args[1])
+	delKeys, err := strconv.Atoi(args[1])
 
 	if err != nil {
 		return EncodeError(ErrWrongArgs("LPOP"))
 	}
 
-	val, err := h.store.LPop(key, del_keys)
+	values, err := h.store.LPop(key, delKeys)
 
 	if err != nil {
 		return EncodeError(err)
 	}
 
-	return EncodeStringArray(val)
+	encodeArray := NewEncodeArray()
+
+	for _, value := range values {
+		encodeArray.Append(EncodeBulkString(value))
+	}
+
+	return encodeArray.Bytes()
 }
 
 func (h *CommandHandler) BLPop(args []string) []byte {
@@ -196,7 +208,12 @@ func (h *CommandHandler) BLPop(args []string) []byte {
 		return EncodeNullArray()
 	}
 
-	return EncodeStringArray([]string{key, val})
+	encodeArray := NewEncodeArray()
+
+	encodeArray.Append(EncodeBulkString(key))
+	encodeArray.Append(EncodeBulkString(val))
+
+	return encodeArray.Bytes()
 }
 
 // stream commands
@@ -228,6 +245,30 @@ func (h *CommandHandler) XAdd(args []string) []byte {
 	}
 
 	return EncodeBulkString(ID)
+}
+
+func (h *CommandHandler) XRANGE(args []string) []byte {
+	if len(args) != 3 {
+		return EncodeError(ErrWrongArgs("XRANGE"))
+	}
+
+	key := args[0]
+	start := args[1]
+	end := args[2]
+
+	entries, err := h.store.XRange(key, start, end)
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	encodeArray := NewEncodeArray()
+
+	for _, entry := range entries {
+		encodeArray.Append(entry.EncodeRESP())
+	}
+
+	return encodeArray.Bytes()
 }
 
 // transaction commands
@@ -266,6 +307,7 @@ func BuildRegistry(s *Store) map[string]Handler {
 		"BLPOP":  h.BLPop,
 		"TYPE":   h.Type,
 		"XADD":   h.XAdd,
+		"XRANGE": h.XRANGE,
 		"INCR":   h.Incr,
 	}
 }

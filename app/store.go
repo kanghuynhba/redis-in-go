@@ -254,7 +254,6 @@ func (s *Store) lookupWriteOrCreate(key string, expectedType ObjectType) (any, e
 	obj, exists := s.lookup(key)
 	if !exists {
 		var data any
-
 		switch expectedType {
 		case TypeString:
 			str := ""
@@ -279,14 +278,6 @@ func (s *Store) lookupWriteOrCreate(key string, expectedType ObjectType) (any, e
 	return obj.Data, nil
 }
 
-func (s *Store) getStreamForWrite(key string) (*Stream, error) {
-	data, err := s.lookupWriteOrCreate(key, TypeStream)
-	if err != nil {
-		return nil, err
-	}
-	return data.(*Stream), nil
-}
-
 func (s *Store) getListForWrite(key string) (*Deque, error) {
 	data, err := s.lookupWriteOrCreate(key, TypeList)
 	if err != nil {
@@ -299,10 +290,13 @@ func (s *Store) XAdd(key, rawID string, values []string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	stream, err := s.getStreamForWrite(key)
+	data, err := s.lookupWriteOrCreate(key, TypeStream)
+
 	if err != nil {
 		return "", err
 	}
+
+	stream := data.(*Stream)
 
 	ID, err := stream.Append(rawID, values)
 
@@ -311,6 +305,30 @@ func (s *Store) XAdd(key, rawID string, values []string) (string, error) {
 	}
 
 	return ID, nil
+}
+
+func (s *Store) XRange(key, rawStartID, rawEndID string) ([]StreamEntry, error) {
+	s.mu.RLock()
+	obj, exists := s.lookup(key)
+	s.mu.RUnlock()
+
+	if !exists {
+		return []StreamEntry{}, nil
+	}
+
+	if err := checkType(obj.Type, TypeStream); err != nil {
+		return []StreamEntry{}, err
+	}
+
+	stream := obj.Data.(*Stream)
+
+	entries, err := stream.Range(rawStartID, rawEndID)
+
+	if err != nil {
+		return []StreamEntry{}, err
+	}
+
+	return entries, nil
 }
 
 func (s *Store) Incr(key string) (int, error) {
