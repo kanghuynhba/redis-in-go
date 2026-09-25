@@ -7,6 +7,31 @@ import (
 	"time"
 )
 
+func TestBasicSetGet(t *testing.T) {
+	store := NewStore()
+	pairs := []string{"khang", "22", "tiago", "30+", "vasilios", "35+", "nic", "50+"}
+	for i := 0; i < len(pairs); i += 2 {
+		key := pairs[i]
+		value := pairs[i+1]
+		store.Set(key, value)
+	}
+
+	for i := 0; i < len(pairs); i += 2 {
+		key := pairs[i]
+		want := pairs[i+1]
+		got, exists, err := store.Get(key)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !exists || got != want {
+			t.Errorf("expected %s, got %s (exists=%v)", want, got, exists)
+		}
+	}
+
+}
+
 // TestConcurrentSetGet tests multiple goroutines concurrently reading and writing their own keys.
 func TestConcurrentSetGet(t *testing.T) {
 	store := NewStore()
