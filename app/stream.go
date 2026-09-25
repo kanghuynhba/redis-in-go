@@ -14,6 +14,28 @@ type StreamID struct {
 	SeqNumber int
 }
 
+func ParseStreamID(rawID string) (StreamID, error) {
+	parts := strings.Split(rawID, "-")
+
+	if len(parts) != 2 {
+		return StreamID{}, ErrInvalidStreamID
+	}
+
+	// handling ms
+	ms, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return StreamID{}, ErrInvalidStreamID
+	}
+
+	// handling seqNumb
+	seqNumb, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return StreamID{}, ErrInvalidStreamID
+	}
+
+	return StreamID{MilliSec: ms, SeqNumber: seqNumb}, nil
+}
+
 func (sid StreamID) String() string {
 	return fmt.Sprintf("%d-%d", sid.MilliSec, sid.SeqNumber)
 }
@@ -56,59 +78,63 @@ func (s *Stream) validateOrGenerateID(rawID string) (StreamID, error) {
 	lastID := lastEntry.ID
 
 	currentTime := time.Now().UnixMilli()
-	currentSeqNumb := 0
 
 	// handling "*"
 	if rawID == "*" {
-		if exists && lastID.MilliSec == currentTime {
-			currentSeqNumb = lastID.SeqNumber + 1
+		seq := 0
+		if exists {
+			if lastID.MilliSec < currentTime {
+				currentTime = lastID.MilliSec
+				seq = lastID.SeqNumber + 1
+			} else if lastID.MilliSec == currentTime {
+				seq = lastID.SeqNumber + 1
+			}
 		}
-		return StreamID{MilliSec: currentTime, SeqNumber: currentSeqNumb}, nil
+		return StreamID{MilliSec: currentTime, SeqNumber: seq}, nil
 	}
 
 	// handling "ms-*"
-	parts := strings.Split(rawID, "-")
+	if strings.HasSuffix(rawID, "-*") {
+		parts := strings.Split(rawID, "-")
 
-	if len(parts) != 2 {
-		return StreamID{}, ErrInvalidStreamID
-	}
+		if len(parts) != 2 {
+			return StreamID{}, ErrInvalidStreamID
+		}
 
-	ms, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return StreamID{}, ErrInvalidStreamID
-	}
+		ms, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			return StreamID{}, ErrInvalidStreamID
+		}
 
-	if parts[1] == "*" {
+		seq := 0
 		if exists {
 			if ms < lastID.MilliSec {
 				return StreamID{}, ErrStreamIDSmaller
 			} else if ms == lastID.MilliSec {
-				currentSeqNumb = lastID.SeqNumber + 1
+				seq = lastID.SeqNumber + 1
 			}
 		} else if ms == 0 {
-			currentSeqNumb = 1
+			seq = 1
 		}
 
-		return StreamID{MilliSec: ms, SeqNumber: currentSeqNumb}, nil
+		return StreamID{MilliSec: ms, SeqNumber: seq}, nil
 	}
 
-	// handling "ms-seqNumb"
-	seqNumb, err := strconv.Atoi(parts[1])
+	id, err := ParseStreamID(rawID)
+
 	if err != nil {
-		return StreamID{}, ErrInvalidStreamID
+		return StreamID{}, err
 	}
 
-	if ms == 0 && seqNumb == 0 {
+	if id.MilliSec == 0 && id.SeqNumber == 0 {
 		return StreamID{}, ErrStreamIDZero
 	}
 
-	if exists {
-		if ms < lastID.MilliSec || (ms == lastID.MilliSec && lastID.SeqNumber >= seqNumb) {
-			return StreamID{}, ErrStreamIDSmaller
-		}
+	if exists && id.Compare(lastID) <= 0 {
+		return StreamID{}, ErrStreamIDSmaller
 	}
 
-	return StreamID{MilliSec: ms, SeqNumber: seqNumb}, nil
+	return id, nil
 }
 
 func (s *Stream) Append(rawID string, values []string) (string, error) {
@@ -163,40 +189,38 @@ func (s *Stream) UpperBound(id StreamID) int {
 	return left
 }
 
-func (s *Stream) validateRangeID(rawID string) (StreamID, error) {
+func (s *Stream) validateRangeID(rawID string, isEnd bool) (StreamID, error) {
+	if rawID == "-" {
+		return StreamID{MilliSec: 0, SeqNumber: 0}, nil
+	}
 
 	if rawID == "+" {
-		lastEntry, exists := s.Last()
-		if !exists {
+		return StreamID{MilliSec: math.MaxInt64, SeqNumber: math.MaxInt}, nil
+	}
+
+	if !strings.Contains(rawID, "-") {
+		ms, err := strconv.ParseInt(rawID, 10, 64)
+
+		if err != nil {
 			return StreamID{}, ErrInvalidStreamID
 		}
-		return lastEntry.ID, nil
+
+		if isEnd {
+			return StreamID{MilliSec: ms, SeqNumber: math.MaxInt}, nil
+		}
+
+		return StreamID{MilliSec: ms, SeqNumber: 0}, nil
 	}
-
-	parts := strings.Split(rawID, "-")
-
-	if len(parts) != 2 {
-		return StreamID{}, ErrInvalidStreamID
-	}
-
-	ms, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return StreamID{}, ErrInvalidStreamID
-	}
-
-	seqNumb, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return StreamID{}, ErrInvalidStreamID
-	}
-
-	return StreamID{MilliSec: ms, SeqNumber: seqNumb}, nil
+	return ParseStreamID(rawID)
 }
 
 func (s *Stream) Range(rawStartID, rawEndID string) ([]StreamEntry, error) {
+	start, err := s.validateRangeID(rawStartID, false)
+	if err != nil {
+		return nil, err
+	}
 
-	start, err := s.validateRangeID(rawStartID)
-	end, err := s.validateRangeID(rawEndID)
-
+	end, err := s.validateRangeID(rawEndID, true)
 	if err != nil {
 		return nil, err
 	}
