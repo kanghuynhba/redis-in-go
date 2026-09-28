@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -74,7 +75,6 @@ func NewStream() *Stream {
 
 func (s *Stream) validateOrGenerateID(rawID string) (StreamID, error) {
 	lastEntry, exists := s.Last()
-
 	lastID := lastEntry.ID
 
 	currentTime := time.Now().UnixMilli()
@@ -228,4 +228,16 @@ func (s *Stream) Range(rawStartID, rawEndID string) ([]StreamEntry, error) {
 	startIdx := s.LowerBound(start)
 	endIdx := s.UpperBound(end)
 	return (*s)[startIdx:endIdx], nil
+}
+
+func (s *Stream) ReadAfter(rawID string) (Stream, error) {
+	id, err := s.validateRangeID(rawID, false)
+
+	if err != nil {
+		return nil, err
+	}
+
+	idx := math.Max((float64(s.UpperBound(id) - 1)), 0)
+
+	return (*s)[int(idx):], nil
 }

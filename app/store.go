@@ -331,6 +331,39 @@ func (s *Store) XRange(key, rawStartID, rawEndID string) ([]StreamEntry, error) 
 	return entries, nil
 }
 
+func (s *Store) XRead(requests []StreamRequest, isBlock, isStream bool) ([]StreamResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	responses := make([]StreamResponse, 0)
+
+	for i := 0; i < len(requests); i++ {
+		key := requests[i].Key
+		rawID := requests[i].RawID
+
+		obj, exists := s.lookup(key)
+
+		if !exists {
+			return nil, nil
+		}
+
+		if err := checkType(obj.Type, TypeStream); err != nil {
+			return nil, err
+		}
+
+		data := obj.Data.(*Stream)
+		entries, err := data.ReadAfter(rawID)
+
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, StreamResponse{Key: key, Stream: entries})
+	}
+
+	return responses, nil
+}
+
 func (s *Store) Incr(key string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -467,4 +500,27 @@ func (s *Store) pop(key string, del_keys int, isBack bool) ([]string, error) {
 
 	return values, nil
 
+}
+
+type StreamRequest struct {
+	Key   string
+	RawID string
+}
+
+type StreamResponse struct {
+	Key    string
+	Stream Stream
+}
+
+func (r *StreamResponse) EncodeRESP() []byte {
+	entryArr := NewEncodeArray()
+	entryArr.Append(EncodeBulkString(r.Key))
+
+	valArr := NewEncodeArray()
+	for _, entry := range r.Stream {
+		valArr.Append(entry.EncodeRESP())
+	}
+	entryArr.Append(valArr.Bytes())
+
+	return entryArr.Bytes()
 }
