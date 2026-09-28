@@ -247,7 +247,7 @@ func (h *CommandHandler) XAdd(args []string) []byte {
 	return EncodeBulkString(ID)
 }
 
-func (h *CommandHandler) XRANGE(args []string) []byte {
+func (h *CommandHandler) XRange(args []string) []byte {
 	if len(args) != 3 {
 		return EncodeError(ErrWrongArgs("XRANGE"))
 	}
@@ -268,6 +268,49 @@ func (h *CommandHandler) XRANGE(args []string) []byte {
 		encodeArray.Append(entry.EncodeRESP())
 	}
 
+	return encodeArray.Bytes()
+}
+
+func (h *CommandHandler) XRead(args []string) []byte {
+	iter := 0
+	isBlock, isStream := false, false
+
+	if args[iter] == "block" {
+		iter += 2
+		isBlock = true
+	}
+
+	if args[iter] == "streams" {
+		iter++
+		isStream = true
+	}
+
+	if (len(args)-iter)%2 != 0 {
+		return EncodeError(ErrWrongArgs("XREAD"))
+	}
+
+	pairs := (len(args) - iter) / 2
+
+	requests := make([]StreamRequest, 0)
+
+	keys := args[iter : iter+pairs]
+	rawIds := args[iter+pairs : iter+pairs*2]
+
+	for i := 0; i < pairs; i++ {
+		requests = append(requests, StreamRequest{Key: keys[i], RawID: rawIds[i]})
+	}
+
+	responses, err := h.store.XRead(requests, isBlock, isStream)
+
+	if err != nil {
+		return EncodeError(err)
+	}
+
+	encodeArray := NewEncodeArray()
+
+	for _, response := range responses {
+		encodeArray.Append(response.EncodeRESP())
+	}
 	return encodeArray.Bytes()
 }
 
@@ -307,7 +350,8 @@ func BuildRegistry(s *Store) map[string]Handler {
 		"BLPOP":  h.BLPop,
 		"TYPE":   h.Type,
 		"XADD":   h.XAdd,
-		"XRANGE": h.XRANGE,
+		"XRANGE": h.XRange,
+		"XREAD":  h.XRead,
 		"INCR":   h.Incr,
 	}
 }
